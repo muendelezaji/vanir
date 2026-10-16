@@ -57,3 +57,17 @@ py_test(
         "@com_google_absl_py//absl/testing:absltest",
     ],
 )
+
+py_test(
+    name = "cpp_parser_contract_test",
+    size = "small",
+    srcs = ["cpp_parser_contract_test.py"],
+    data = [
+        "@pybind11_abseil//pybind11_abseil:status.so",
+    ] + glob(["testdata/*"]),
+    deps = [
+        ":cpp_parser",
+        "@com_google_absl_py//absl/testing:absltest",
+        "@com_google_absl_py//absl/testing:parameterized",
+    ],
+)
