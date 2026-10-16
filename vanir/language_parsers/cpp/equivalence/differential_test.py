@@ -76,7 +76,9 @@ class DifferentialHarnessTest(parameterized.TestCase):
     changed = dataclasses.replace(_FUNCTION, **mutation)
     dimensions = differential.differences(
         differential.snapshot(_SingleUseParser, 5),
-        differential.snapshot(functools.partial(_SingleUseParser, chunk=changed), 5),
+        differential.snapshot(
+            functools.partial(_SingleUseParser, chunk=changed), 5
+        ),
     )
     self.assertIn('functions', dimensions)
 
@@ -84,7 +86,9 @@ class DifferentialHarnessTest(parameterized.TestCase):
     changed = dataclasses.replace(_FUNCTION, local_variables=[])
     dimensions = differential.differences(
         differential.snapshot(_SingleUseParser, 5),
-        differential.snapshot(functools.partial(_SingleUseParser, chunk=changed), 5),
+        differential.snapshot(
+            functools.partial(_SingleUseParser, chunk=changed), 5
+        ),
     )
     self.assertIn('normalized_functions', dimensions)
     self.assertIn('function_hashes', dimensions)
@@ -93,7 +97,9 @@ class DifferentialHarnessTest(parameterized.TestCase):
     changed = {**_LINES, 5: ['return', '-1', ';']}
     dimensions = differential.differences(
         differential.snapshot(_SingleUseParser, 5),
-        differential.snapshot(functools.partial(_SingleUseParser, lines=changed), 5),
+        differential.snapshot(
+            functools.partial(_SingleUseParser, lines=changed), 5
+        ),
     )
     self.assertIn('line_tokens', dimensions)
     self.assertIn('normalized_lines', dimensions)
@@ -110,7 +116,8 @@ class DifferentialHarnessTest(parameterized.TestCase):
     reference = differential.snapshot(functools.partial(
         _SingleUseParser, errors=[common.ParseError(2, 0, 'int', 'native')]), 5)
     candidate = differential.snapshot(functools.partial(
-        _SingleUseParser, errors=[common.ParseError(2, 0, 'int', 'tree-sitter')]), 5)
+        _SingleUseParser,
+        errors=[common.ParseError(2, 0, 'int', 'tree-sitter')]), 5)
     self.assertNotEqual(reference['diagnostics'], candidate['diagnostics'])
     self.assertEmpty(differential.differences(reference, candidate))
 

@@ -25,7 +25,9 @@ class CppParserBackendTest(absltest.TestCase):
     ).full_path
 
   def test_environment_selection_through_parse_file(self):
-    with mock.patch.dict(os.environ, {'VANIR_CPP_PARSER_BACKEND': 'tree_sitter'}):
+    with mock.patch.dict(
+        os.environ, {'VANIR_CPP_PARSER_BACKEND': 'tree_sitter'}
+    ):
       result = language_parsers.parse_file(self.source)
     self.assertLen(result.function_chunks, 1)
     self.assertEqual(result.function_chunks[0].name, 'twice')
@@ -35,7 +37,9 @@ class CppParserBackendTest(absltest.TestCase):
 
   def test_explicit_argument_overrides_environment(self):
     with mock.patch.dict(os.environ, {'VANIR_CPP_PARSER_BACKEND': 'invalid'}):
-      result = cpp_parser.CppParser(self.source, backend='tree_sitter').get_chunks()
+      result = cpp_parser.CppParser(
+          self.source, backend='tree_sitter'
+      ).get_chunks()
     self.assertEqual(result.function_chunks[0].name, 'twice')
 
   def test_invalid_environment_fails_before_loading_native_extension(self):
@@ -54,6 +58,24 @@ class CppParserBackendTest(absltest.TestCase):
     self.assertEmpty(filtered.function_chunks)
     self.assertEqual(complete.line_chunk, filtered.line_chunk)
 
+  def test_import_order_cannot_bypass_explicit_backend_selection(self):
+    script = """
+from vanir.language_parsers.cpp import tree_sitter_parser
+from vanir.language_parsers import language_parsers
+from vanir.language_parsers.cpp import cpp_parser
+assert language_parsers.get_parser_class('sample.c') is cpp_parser.CppParser
+assert language_parsers.get_parser_class('sample.cpp') is cpp_parser.CppParser
+assert language_parsers.get_parser_class('sample.h') is cpp_parser.CppParser
+"""
+    process_env = dict(os.environ)
+    process_env.pop('VANIR_CPP_PARSER_BACKEND', None)
+    process_env['PYTHONPATH'] = os.pathsep.join(sys.path)
+    process = subprocess.run(
+        [sys.executable, '-c', script], capture_output=True,
+        text=True, check=False, env=process_env,
+    )
+    self.assertEqual(process.returncode, 0, process.stderr)
+
   def test_spawned_interpreter_inherits_selection_without_native_imports(self):
     script = '''
 import sys
@@ -64,11 +86,15 @@ assert 'vanir.language_parsers.cpp.python.parser_core' not in sys.modules
 assert 'vanir.language_parsers.java.python.parser_core' not in sys.modules
 assert 'pybind11_abseil.status' not in sys.modules
 '''
-    with mock.patch.dict(os.environ, {'VANIR_CPP_PARSER_BACKEND': 'tree_sitter'}):
-      process = subprocess.run(
-          [sys.executable, '-c', script, self.source],
-          capture_output=True, text=True, check=False,
-      )
+    # Bazel's launcher adds runfiles imports to sys.path in this process.
+    # Preserve those paths when launching the interpreter directly.
+    process_env = dict(os.environ)
+    process_env['VANIR_CPP_PARSER_BACKEND'] = 'tree_sitter'
+    process_env['PYTHONPATH'] = os.pathsep.join(sys.path)
+    process = subprocess.run(
+        [sys.executable, '-c', script, self.source],
+        capture_output=True, text=True, check=False, env=process_env,
+    )
     self.assertEqual(process.returncode, 0, process.stderr)
 
 

@@ -30,7 +30,9 @@ def _reference_parser(filename):
 class ParserEquivalenceTest(parameterized.TestCase):
 
   def test_reference_backend_ignores_environment_opt_in(self):
-    with mock.patch.dict(os.environ, {'VANIR_CPP_PARSER_BACKEND': 'tree_sitter'}):
+    with mock.patch.dict(
+        os.environ, {'VANIR_CPP_PARSER_BACKEND': 'tree_sitter'}
+    ):
       with mock.patch.object(cpp_parser, 'CppParser') as constructor:
         _reference_parser('fixture.c')
     constructor.assert_called_once_with('fixture.c', backend='fuzzyc')
@@ -41,7 +43,8 @@ class ParserEquivalenceTest(parameterized.TestCase):
     return (
         differential.snapshot(lambda: _reference_parser(str(path)), line_count),
         differential.snapshot(
-            lambda: tree_sitter_parser.TreeSitterCppParser(str(path)), line_count
+            lambda: tree_sitter_parser.TreeSitterCppParser(str(path)),
+            line_count,
         ),
     )
 
@@ -52,7 +55,8 @@ class ParserEquivalenceTest(parameterized.TestCase):
     reference, candidate = self._parse_both(filename)
     for dimension in reference:
       if dimension == 'diagnostics':
-        continue  # Text belongs to the parser; structured locations are checked.
+        # Text belongs to the parser; structured locations are checked.
+        continue
       with self.subTest(dimension=dimension):
         self.assertEqual(reference[dimension], candidate[dimension])
 
@@ -61,6 +65,7 @@ class ParserEquivalenceTest(parameterized.TestCase):
       ('kernel', 'kernel_style.c', [('process_packet', 2, 8)]),
       ('empty', 'empty.c', []),
       ('crlf', 'crlf.c', [('windows', 1, 3)]),
+      ('template', 'cpp_templates.cpp', [('identity', 1, 4)]),
   )
   def test_independent_function_boundary_oracle(self, filename, expected):
     for implementation in (_reference_parser,
@@ -116,7 +121,8 @@ class ParserEquivalenceTest(parameterized.TestCase):
     for selection in candidate['function_selection']:
       affected = selection['ranges']
       includes_recovered = filename == 'partial_fragment.c' and (
-          not affected or any(start <= 6 and end >= 4 for start, end in affected)
+          not affected
+          or any(start <= 6 and end >= 4 for start, end in affected)
       )
       self.assertEqual(
           [function[0] for function in selection['functions']],
@@ -128,7 +134,9 @@ class ParserEquivalenceTest(parameterized.TestCase):
   )
   def test_extended_syntax_signature_compatibility(self, filename):
     reference, candidate = self._parse_both(filename)
-    self.assertEmpty(differential.differences(reference, candidate))
+    for dimension in differential.differences(reference, candidate):
+      with self.subTest(dimension=dimension):
+        self.assertEqual(reference[dimension], candidate[dimension])
 
 
 if __name__ == '__main__':
