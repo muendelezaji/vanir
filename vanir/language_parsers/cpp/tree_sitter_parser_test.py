@@ -6,6 +6,9 @@
 
 """Behavioral contract tests for the opt-in Tree-sitter C/C++ backend."""
 
+import os
+import subprocess
+import sys
 from unittest import mock
 
 from absl.testing import absltest
@@ -51,7 +54,8 @@ void test_func_def(int myarg) {}
     self.assertEqual(parser.get_function_ranges(), [(1, 3), (5, 5)])
     self.assertLen(parser.get_chunks().function_chunks, 2)
     self.assertLen(parser.get_chunks([]).function_chunks, 2)
-    self.assertEqual([c.name for c in parser.get_chunks([(3, 3)]).function_chunks],
+    self.assertEqual(
+        [c.name for c in parser.get_chunks([(3, 3)]).function_chunks],
                      ['first'])
     self.assertEmpty(parser.get_chunks([(4, 4)]).function_chunks)
     self.assertLen(parser.get_chunks([(3, 5), (1, 1)]).function_chunks, 2)
@@ -68,7 +72,8 @@ int f() {
 ''').get_chunks()
     self.assertNotIn(1, results.line_chunk.tokens)
     self.assertEqual(results.line_chunk.tokens[3],
-                     ['const', 'char', '*', 's', '=', '"a // b /* c */ \\"d"', ';'])
+                     ['const', 'char', '*', 's', '=',
+                      '"a // b /* c */ \\"d"', ';'])
     self.assertEqual(results.line_chunk.tokens[4],
                      ['char', 'c', '=', "'\\''", ';'])
     self.assertEqual(results.line_chunk.tokens[5],
@@ -88,12 +93,13 @@ int Thing::method(int x, const char *name) {
     self.assertEqual(chunk.name, 'Thing::method')
     self.assertEqual(chunk.parameters, ['x', 'name'])
     self.assertEqual(chunk.local_variables, ['a', 'b'])
-    self.assertEqual(chunk.called_functions, ['direct'])
+    self.assertEqual(chunk.called_functions, ['direct', 'ns::qualified'])
     self.assertEqual(chunk.used_data_types,
                      [['int'], ['const', 'char'], ['int']])
 
   def test_raw_string_preserves_legacy_prefix_boundary(self):
-    results = self.parse('const char *x = R"tag(a\n// b)tag";', '.cpp').get_chunks()
+    results = self.parse(
+        'const char *x = R"tag(a\n// b)tag";', '.cpp').get_chunks()
     self.assertEqual(results.line_chunk.tokens,
                      {1: ['const', 'char', '*', 'x', '=',
                           'R', '"tag(a\n// b)tag"'], 2: [';']})
@@ -113,7 +119,8 @@ int no() { return 0; }
     self.assertEqual(results.line_chunk.tokens[5], ['#endif\n'])
 
   def test_malformed_source_reports_diagnostics_and_preserves_tokens(self):
-    results = self.parse('int broken() { return (1 + ); }\nint good() {}').get_chunks()
+    results = self.parse(
+        'int broken() { return (1 + ); }\nint good() {}').get_chunks()
     self.assertNotEmpty(results.parse_errors)
     self.assertTrue(all(error.line >= 1 and error.column >= 0
                         for error in results.parse_errors))
@@ -135,12 +142,14 @@ int no() { return 0; }
                                 encoding='LATIN-1').full_path
     self.assertEqual(tree_sitter_parser.TreeSitterCppParser(path)
                      .get_chunks().function_chunks[0].name, 'f')
-    with mock.patch.object(abstract_language_parser, '_ALTERNATIVE_ENCODINGS', []):
+    with mock.patch.object(
+        abstract_language_parser, '_ALTERNATIVE_ENCODINGS', []):
       with self.assertRaisesRegex(ValueError, 'Failed to decode'):
         tree_sitter_parser.TreeSitterCppParser(path)
 
   def test_arrays_function_pointers_and_returned_function_pointer(self):
-    results = self.parse('''int (*factory(int (*callback)(int), int values[4]))(int) {
+    results = self.parse('''
+int (*factory(int (*callback)(int), int values[4]))(int) {
   int (*local)(int) = callback;
   int table[4], value = values[0];
   return local;
@@ -150,7 +159,7 @@ int no() { return 0; }
     self.assertEqual(chunk.name, 'factory')
     self.assertEqual(chunk.parameters, ['callback', 'values'])
     self.assertEqual(chunk.local_variables, ['local', 'table', 'value'])
-    self.assertEqual(chunk.used_data_types, [['int']] * 4)
+    self.assertEqual(chunk.used_data_types, [['int']] * 6)
 
   def test_nested_namespaces_and_methods_do_not_include_prototypes(self):
     results = self.parse('''namespace outer { namespace inner {
@@ -165,13 +174,74 @@ void Box::set(int next) { value = next; }
 }}''', '.cpp').get_chunks()
     self.assertEmpty(results.parse_errors)
     self.assertEqual([chunk.name for chunk in results.function_chunks],
-                     ['get', 'Box::set'])
-    self.assertEqual(results.function_chunks[1].parameters, ['next'])
+                     ['Box::set'])
+    self.assertEqual(results.function_chunks[0].parameters, ['next'])
 
   def test_missing_unnamed_punctuation_reports_diagnostic(self):
     results = self.parse('int f() { return 1 }').get_chunks()
     self.assertNotEmpty(results.parse_errors)
-    self.assertTrue(any('missing' in error.message for error in results.parse_errors))
+    self.assertTrue(
+        any('missing' in error.message for error in results.parse_errors))
+
+  def test_signature_lexer_handles_adversarial_strings_in_bounded_time(self):
+    program = (
+        'from vanir.language_parsers.cpp.tree_sitter_parser import _lex; '
+        'source = chr(34) + "a" + chr(34) + " " + "x" * 10000 + ";"; '
+        'assert len(list(_lex(source))) == 4; '
+        'list(_lex("/*" * 10000))'
+    )
+    environment = dict(os.environ, PYTHONPATH=os.pathsep.join(sys.path))
+    subprocess.run([sys.executable, '-c', program], check=True, timeout=10,
+                   env=environment)
+
+  def test_template_prefix_and_postfix_qualifiers(self):
+    parser = self.parse('''template<typename T>
+T identity(T const value) {
+  T const local = value;
+  return local;
+}''', '.cpp')
+    chunk = parser.get_chunks([(1, 1)]).function_chunks[0]
+    self.assertEqual(parser.get_function_ranges(), [(1, 5)])
+    self.assertEqual(chunk.tokens[:5], ['template', '<', 'typename', 'T', '>'])
+    self.assertEqual(chunk.used_data_types, [['T', 'const'], ['T', 'const']])
+
+  def test_adjacent_strings_nested_comments_and_legacy_numeric_boundaries(self):
+    results = self.parse('''/* outer /* nested */ remaining */
+const char *s = "one" PREFIX "two";
+int f() { return 09 + 1ULL; }
+''').get_chunks()
+    self.assertNotIn(1, results.line_chunk.tokens)
+    self.assertEqual(results.line_chunk.tokens[2],
+                     ['const', 'char', '*', 's', '=',
+                      '"one" PREFIX "two"', ';'])
+    self.assertEqual(results.line_chunk.tokens[3],
+                     ['int', 'f', '(', ')', '{', 'return', '0', '9', '+',
+                      '1UL', 'L', ';', '}'])
+
+  def test_gnu_attribute_boundary_and_typeof_legacy_metadata(self):
+    parser = self.parse('''static inline int __attribute__((unused))
+read_item(struct item *item) {
+  typeof(item->value) result = item->value;
+  return result;
+}''')
+    results = parser.get_chunks()
+    chunk = results.function_chunks[0]
+    self.assertEqual(parser.get_function_ranges(), [(2, 5)])
+    self.assertEqual(chunk.tokens[0], 'read_item')
+    self.assertEqual(chunk.return_types, [[]])
+    self.assertEqual(chunk.used_data_types, [['struct', 'item']])
+    self.assertEmpty(chunk.called_functions)
+    self.assertEmpty(chunk.local_variables)
+    self.assertEmpty(results.parse_errors)
+    self.assertEmpty(parser.get_chunks([(1, 1)]).function_chunks)
+
+  def test_typeof_compatibility_does_not_hide_unrelated_errors(self):
+    results = self.parse('''int f(struct item *item) {
+  typeof(item->value) result = item->value;
+  return (result + );
+}''').get_chunks()
+    self.assertNotEmpty(results.parse_errors)
+    self.assertTrue(all(error.line == 3 for error in results.parse_errors))
 
   def test_missing_file(self):
     with self.assertRaises(FileNotFoundError):

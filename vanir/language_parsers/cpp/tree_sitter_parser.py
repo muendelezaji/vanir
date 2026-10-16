@@ -6,7 +6,7 @@
 
 """Opt-in Tree-sitter C/C++ parser using Vanir's existing chunk interface.
 
-Tree-sitter supplies structural information; an independent lexical pass supplies
+Tree-sitter supplies structure; an independent lexical pass supplies
 signature tokens. In particular, comments, preprocessor branches and recovery
 nodes must not silently disappear from line signatures. This backend does not
 claim that its recovery or metadata are identical to FuzzyC on all input.
@@ -33,22 +33,65 @@ from vanir.language_parsers import common
 # prefixes remain identifiers, and adjacent strings are one token.
 _STRING = r'"(?:\\.|[^"\\])*"'
 _TOKEN = re.compile(
-    r'(?P<skip>[ \r\t\f\n]+|/\*.*?\*/|//[^\n]*(?:\n|$)'
+    r'(?P<skip>[ \r\t\f\n]+|//[^\n]*(?:\n|$)'
     r'|#define[^\r\n]*\r?\n)'
     r'|(?P<directive>\#(?:ifdef|ifndef|if|else|elif|endif)[^\r\n]*\r?\n)'
-    r'|(?P<string>' + _STRING
-    + r'(?:[ \r\t\f\n]*(?:[a-zA-Z_~][a-zA-Z0-9_]*[ \r\t\f\n]*)*'
-    + _STRING + r')*)'
+    r'|(?P<string>' + _STRING + r')'
     r"|(?P<char>'(?:\\.|[^'\\])')"
     r'|(?P<number>(?:\d+\.\d*|\.\d+)(?:[eE][+-]?\d+)?[fFdD]?'
     r'|\d+[eE][+-]?\d+[fFdD]?|\d+[fFdD]'
-    r'|(?:0[xX][\da-fA-F]+|0b[01]+|\d+)(?:[uU]?[lL]|[uU][lL]?)?)'
+    r'|(?:0[xX][\da-fA-F]+|0b[01]+|[1-9][0-9]*|0[0-7]*|0)'
+    r'(?:[uU]?[lL]|[uU][lL]?)?)'
     r'|(?P<identifier>[a-zA-Z_~][a-zA-Z0-9_]*)'
     r'|(?P<operator><<=|>>=|->\*|\.\.\.|::|->|\+\+|--|&&|\|\||'
-    r'<=|>=|==|!=|\+=|-=|\*=|/=|%=|&=|\|=|\^=|<<|>>|[{}()\[\];,:.?+*/%&|^!<>=-])'
+    r'<=|>=|==|!=|\+=|-=|\*=|/=|%=|&=|\|=|\^=|<<|>>|'
+    r'[{}()\[\];,:.?+*/%&|^!<>=-])'
     r'|(?P<other>.)',
     re.DOTALL,
 )
+
+_STRING_TOKEN = re.compile(_STRING, re.DOTALL)
+_STRING_GAP_TOKEN = re.compile(r'[ \r\t\f\n]+|[a-zA-Z_~][a-zA-Z0-9_]*')
+
+
+def _lex(source):
+  """Lex once, merging adjacent strings with deterministic lookahead."""
+  position = 0
+  unterminated_comment = False
+  while position < len(source):
+    if source.startswith('/*', position) and not unterminated_comment:
+      depth = 1
+      cursor = position + 2
+      while depth and cursor < len(source):
+        if source.startswith('/*', cursor):
+          depth += 1
+          cursor += 2
+        elif source.startswith('*/', cursor):
+          depth -= 1
+          cursor += 2
+        else:
+          cursor += 1
+      if not depth:
+        yield position, cursor, 'skip'
+        position = cursor
+        continue
+      unterminated_comment = True
+    match = _TOKEN.match(source, position)
+    end = match.end()
+    if match.lastgroup == 'string':
+      lookahead = end
+      while True:
+        gap = _STRING_GAP_TOKEN.match(source, lookahead)
+        if gap is not None:
+          lookahead = gap.end()
+          continue
+        following = _STRING_TOKEN.match(source, lookahead)
+        if following is None:
+          break
+        end = following.end()
+        lookahead = end
+    yield position, end, match.lastgroup
+    position = end
 
 
 
@@ -105,32 +148,83 @@ class TreeSitterCppParser(abstract_language_parser.AbstractLanguageParser):
     # Headers use C++'s superset grammar, matching the legacy extension policy.
     language_module = (tree_sitter_c if filename.endswith('.c')
                        else tree_sitter_cpp)
-    parser = tree_sitter.Parser(tree_sitter.Language(language_module.language()))
-    self._tree = parser.parse(self._source)
+    language = tree_sitter.Language(language_module.language())
+    parser = tree_sitter.Parser(language)
+    structural_source = bytearray(self._source)
     self._tokens = []
     byte_offset = 0
     previous_end = 0
     line = 1
-    for match in _TOKEN.finditer(source):
-      gap = source[previous_end:match.start()]
+    for start, stop, kind in _lex(source):
+      gap = source[previous_end:start]
       byte_offset += len(gap.encode('UTF-8'))
       line += gap.count('\n')
-      text = match.group()
+      text = source[start:stop]
       end = byte_offset + len(text.encode('UTF-8'))
-      if match.lastgroup not in ('skip', 'other'):
+      if kind == 'skip' and text.startswith('/*'):
+        # FuzzyC accepts nested comments whereas the C grammars close at the
+        # first terminator. Mask comments without changing byte/line positions.
+        for offset in range(byte_offset, end):
+          if structural_source[offset] not in (10, 13):
+            structural_source[offset] = 32
+      if kind not in ('skip', 'other'):
         self._tokens.append(_Token(text, byte_offset, end, line))
       byte_offset = end
       line += text.count('\n')
-      previous_end = match.end()
+      previous_end = stop
+    self._tree = parser.parse(bytes(structural_source))
     self._token_starts = [token.start for token in self._tokens]
     self._functions = [
         node for node in _walk(self._tree.root_node)
-        if node.type == 'function_definition'
+        if node.type == 'function_definition' and not self._inside_class(node)
     ]
 
   @classmethod
   def get_supported_extensions(cls) -> Sequence[str]:
     return ['.c', '.h', '.cc', '.hh', '.cpp', '.hpp', '.cxx', '.hxx']
+
+  @staticmethod
+  def _inside_class(node):
+    parent = node.parent
+    while parent is not None:
+      if parent.type in (
+          'class_specifier', 'struct_specifier', 'union_specifier'):
+        return True
+      parent = parent.parent
+    return False
+
+  @staticmethod
+  def _extent(node):
+    while (node.parent is not None
+           and node.parent.type == 'template_declaration'):
+      node = node.parent
+    return node
+
+  def _function_start(self, node):
+    declarator = node.child_by_field_name('declarator')
+    if declarator is not None and any(
+        child.type == 'attribute_specifier'
+        and child.end_byte <= declarator.start_byte
+        for child in node.named_children
+    ):
+      # The legacy splitter resumes at the name after GNU return attributes.
+      return declarator
+    return self._extent(node)
+
+  def _is_legacy_typeof_declaration(self, node):
+    if node.type != 'assignment_expression':
+      return False
+    left = node.child_by_field_name('left')
+    if left is None or left.type != 'call_expression':
+      return False
+    function = left.child_by_field_name('function')
+    if function is None or self._text(function) not in (
+        'typeof', '__typeof', '__typeof__'):
+      return False
+    errors = [child for child in node.named_children if child.is_error]
+    return (len(errors) == 1
+            and re.fullmatch(r'[a-zA-Z_][a-zA-Z0-9_]*',
+                             self._text(errors[0])) is not None)
 
   def _text(self, node):
     return self._source[node.start_byte:node.end_byte].decode('UTF-8')
@@ -149,14 +243,20 @@ class TreeSitterCppParser(abstract_language_parser.AbstractLanguageParser):
     if type_node is None:
       return []
     start = type_node.start_byte
+    end = type_node.end_byte
+    declarator = declaration.child_by_field_name('declarator')
+    limit = (declarator.start_byte if declarator is not None
+             else declaration.end_byte)
     for child in declaration.named_children:
-      if child.type == 'type_qualifier' and child.start_byte < start:
-        start = child.start_byte
-    return self._range_tokens(start, type_node.end_byte)
+      if child.type == 'type_qualifier' and child.end_byte <= limit:
+        start = min(start, child.start_byte)
+        end = max(end, child.end_byte)
+    return self._range_tokens(start, end)
 
   def get_function_ranges(self) -> Sequence[Tuple[int, int]]:
     """Return inclusive, one-based function ranges for compatibility audits."""
-    return [(node.start_point.row + 1, node.end_point.row + 1)
+    return [(self._function_start(node).start_point.row + 1,
+             node.end_point.row + 1)
             for node in self._functions]
 
   def _function_chunk(self, node):
@@ -185,15 +285,20 @@ class TreeSitterCppParser(abstract_language_parser.AbstractLanguageParser):
             parameter.child_by_field_name('declarator'))
         if parameter_name is not None:
           parameters.append(self._text(parameter_name))
-        type_tokens = self._type_tokens(parameter)
-        if type_tokens:
-          used_types.append(type_tokens)
+        for nested in _walk(parameter):
+          if nested.type in ('parameter_declaration',
+                             'optional_parameter_declaration'):
+            type_tokens = self._type_tokens(nested)
+            if type_tokens:
+              used_types.append(type_tokens)
     locals_ = []
     calls = []
     body = node.child_by_field_name('body')
     if body is not None:
       for child in _walk(body):
-        if child.type in ('declaration', 'type_descriptor'):
+        if child.type in ('declaration', 'type_descriptor', 'new_expression',
+                          'parameter_declaration',
+                          'optional_parameter_declaration'):
           type_tokens = self._type_tokens(child)
           if type_tokens:
             used_types.append(type_tokens)
@@ -204,16 +309,21 @@ class TreeSitterCppParser(abstract_language_parser.AbstractLanguageParser):
               locals_.append(self._text(local_name))
         elif child.type == 'call_expression':
           function = child.child_by_field_name('function')
-          if function is not None and function.type == 'identifier':
-            calls.append(self._text(function))
+          if (function is not None
+              and function.type in ('identifier', 'qualified_identifier')
+              and not (child.parent is not None
+                       and self._is_legacy_typeof_declaration(child.parent))):
+            calls.append(''.join(self._node_tokens(function)))
     return common.FunctionChunkBase(
         name=''.join(self._node_tokens(name)) if name is not None else '',
-        return_types=[self._type_tokens(node)],
+        return_types=[self._type_tokens(node)
+                      if self._function_start(node) != declarator else []],
         parameters=parameters,
         used_data_types=used_types,
         local_variables=locals_,
         called_functions=calls,
-        tokens=self._node_tokens(node),
+        tokens=self._range_tokens(self._function_start(node).start_byte,
+                                  node.end_byte),
     )
 
   def get_chunks(
@@ -228,12 +338,19 @@ class TreeSitterCppParser(abstract_language_parser.AbstractLanguageParser):
       if not ranges or any(first <= end and last >= start
                            for first, last in ranges):
         functions.append(self._function_chunk(node))
-    lines = {}
+    lines: dict[int, list[str]] = {}
     for token in self._tokens:
       lines.setdefault(token.line, []).append(token.text)
     errors = []
     for node in _walk(self._tree.root_node, named_only=False):
       if node.is_error or node.is_missing:
+        # The pinned grammar recovers a valid GNU typeof(expression) variable
+        # declaration as an assignment with the variable in an ERROR node.
+        # FuzzyC ignores this declaration; retain that compatibility behavior
+        # without hiding unrelated errors or changing signature tokens.
+        if (node.parent is not None
+            and self._is_legacy_typeof_declaration(node.parent)):
+          continue
         errors.append(common.ParseError(
             line=node.start_point.row + 1,
             column=node.start_point.column,

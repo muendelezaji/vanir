@@ -13,7 +13,7 @@ by file extensions.
 """
 
 import os
-from typing import Optional, Sequence, Tuple, Type, TypeVar
+from typing import Optional, Sequence, Tuple, Type
 
 from vanir.language_parsers import abstract_language_parser
 from vanir.language_parsers import common
@@ -25,16 +25,20 @@ from vanir.language_parsers.cpp import cpp_parser
 from vanir.language_parsers.java import java_parser
 # pylint: enable=unused-import
 
-_P = TypeVar('_P', bound=abstract_language_parser.AbstractLanguageParser)
-
-
-def get_parser_class(filename: str) -> Optional[Type[_P]]:
+def get_parser_class(
+    filename: str,
+) -> Optional[Type[abstract_language_parser.AbstractLanguageParser]]:
   """Returns the language parser class that handles the given file, or None."""
-  parsers = abstract_language_parser.AbstractLanguageParser.__subclasses__()
   ext = os.path.splitext(filename)[1]
+  # Alternate backend imports must not bypass the facade's explicit selection.
+  # Subclass registration order otherwise makes a prior Tree-sitter import
+  # silently change the default parser for C/C++ files.
+  if ext in cpp_parser.CppParser.get_supported_extensions():
+    return cpp_parser.CppParser
+  parsers = abstract_language_parser.AbstractLanguageParser.__subclasses__()
   for parser_class in parsers:
     if ext in parser_class.get_supported_extensions():
-      return parser_class  # pyrefly: ignore[bad-return]
+      return parser_class
   return None
 
 

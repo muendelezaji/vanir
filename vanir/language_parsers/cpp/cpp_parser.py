@@ -10,7 +10,7 @@ FuzzyC is the default. Set VANIR_CPP_PARSER_BACKEND=tree_sitter to opt in
 to the experimental Tree-sitter backend.
 """
 import os
-from typing import Iterable, Optional, Sequence, Tuple
+from typing import Optional, Sequence, Tuple
 
 from vanir.language_parsers import abstract_language_parser
 from vanir.language_parsers import common
@@ -38,16 +38,18 @@ class CppParser(abstract_language_parser.AbstractLanguageParser):
     if self.backend == 'tree_sitter':
       # Import lazily so the default path does not initialize Tree-sitter and
       # the experimental path does not require the native FuzzyC extension.
-      from vanir.language_parsers.cpp import tree_sitter_parser  # pylint: disable=g-import-not-at-top
-      self._tree_sitter_parser = tree_sitter_parser.TreeSitterCppParser(filename)
+      from vanir.language_parsers.cpp import tree_sitter_parser  # pylint: disable=import-outside-toplevel
+      self._tree_sitter_parser = tree_sitter_parser.TreeSitterCppParser(
+          filename
+      )
       return
     if self.backend != 'fuzzyc':
       raise ValueError(
           'VANIR_CPP_PARSER_BACKEND must be fuzzyc or tree_sitter; '
           f'got {self.backend!r}'
       )
-    from vanir.language_parsers.cpp.python import parser_core  # pylint: disable=g-import-not-at-top
-    from pybind11_abseil import status  # pylint: disable=g-import-not-at-top
+    from vanir.language_parsers.cpp.python import parser_core  # pylint: disable=import-outside-toplevel
+    from pybind11_abseil import status  # pylint: disable=import-outside-toplevel
     try:
       self.parser_core = parser_core.ParserCore(filename)
       self.parser_core.init()
@@ -69,7 +71,7 @@ class CppParser(abstract_language_parser.AbstractLanguageParser):
 
   @classmethod
   # pyrefly: ignore[bad-override]
-  def get_supported_extensions(cls) -> Iterable[str]:
+  def get_supported_extensions(cls) -> Sequence[str]:
     return ['.c', '.h', '.cc', '.hh', '.cpp', '.hpp', '.cxx', '.hxx']
 
   def _to_standard_function_chunk_base(

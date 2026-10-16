@@ -104,6 +104,7 @@ py_test(
         ":cpp_parser",
         ":equivalence",
         ":tree_sitter_parser",
+        "//vanir/language_parsers:common",
         "@com_google_absl_py//absl/testing:absltest",
         "@com_google_absl_py//absl/testing:parameterized",
     ],
