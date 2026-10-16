@@ -41,3 +41,17 @@ py_test(
         "@vanir_deps//requests",
     ],
 )
+
+py_test(
+    name = "tree_sitter_detection_test",
+    size = "small",
+    srcs = ["tree_sitter_detection_test.py"],
+    deps = [
+        "//:parser",
+        "//:reporter",
+        "//:signature",
+        "//vanir/scanners:scanner_base",
+        "@com_google_absl_py//absl/testing:absltest",
+        "@com_google_absl_py//absl/testing:parameterized",
+    ],
+)
