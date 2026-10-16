@@ -40,6 +40,7 @@ py_library(
         "@pybind11_abseil//pybind11_abseil:status.so",
     ],
     deps = [
+        ":tree_sitter_parser",
         "//vanir/language_parsers:abstract_language_parser",
         "//vanir/language_parsers:common",
     ],
@@ -55,5 +56,78 @@ py_test(
         "//vanir/language_parsers:abstract_language_parser",
         "@com_google_absl_py//absl/logging",
         "@com_google_absl_py//absl/testing:absltest",
+    ],
+)
+
+# Pure-Python Tree-sitter backend. FuzzyC remains available as the default.
+py_library(
+    name = "tree_sitter_parser",
+    srcs = ["tree_sitter_parser.py"],
+    deps = [
+        "//vanir/language_parsers:abstract_language_parser",
+        "//vanir/language_parsers:common",
+        "@vanir_deps//tree_sitter",
+        "@vanir_deps//tree_sitter_c",
+        "@vanir_deps//tree_sitter_cpp",
+    ],
+)
+
+py_test(
+    name = "tree_sitter_parser_test",
+    size = "small",
+    srcs = ["tree_sitter_parser_test.py"],
+    deps = [
+        ":tree_sitter_parser",
+        "@com_google_absl_py//absl/testing:absltest",
+    ],
+)
+
+py_library(
+    name = "equivalence",
+    srcs = ["equivalence/differential.py"],
+    deps = [
+        "//:hasher",
+        "//:normalizer",
+        "//vanir/language_parsers:abstract_language_parser",
+    ],
+)
+
+py_test(
+    name = "parser_equivalence_test",
+    size = "small",
+    srcs = ["parser_equivalence_test.py"],
+    data = glob([
+        "equivalence/fixtures/*",
+        "equivalence/*.json",
+    ]),
+    deps = [
+        ":cpp_parser",
+        ":equivalence",
+        ":tree_sitter_parser",
+        "@com_google_absl_py//absl/testing:absltest",
+        "@com_google_absl_py//absl/testing:parameterized",
+    ],
+)
+
+py_test(
+    name = "cpp_parser_backend_test",
+    size = "small",
+    srcs = ["cpp_parser_backend_test.py"],
+    deps = [
+        ":cpp_parser",
+        "//vanir/language_parsers:language_parsers",
+        "@com_google_absl_py//absl/testing:absltest",
+    ],
+)
+
+py_test(
+    name = "differential_test",
+    size = "small",
+    srcs = ["equivalence/differential_test.py"],
+    deps = [
+        ":equivalence",
+        "//vanir/language_parsers:common",
+        "@com_google_absl_py//absl/testing:absltest",
+        "@com_google_absl_py//absl/testing:parameterized",
     ],
 )

@@ -14,9 +14,6 @@ from typing import Iterable, Optional, Sequence, Tuple
 
 from vanir.language_parsers import abstract_language_parser
 from vanir.language_parsers import common
-from vanir.language_parsers.java.python import parser_core
-
-from pybind11_abseil import status
 
 _ANTLR4_DECODE_ERROR = 'UTF-8 string contains an illegal byte sequence'
 
@@ -41,6 +38,10 @@ class JavaParser(abstract_language_parser.AbstractLanguageParser):
           Sequence[Tuple[int, int]]
       ] = None,
   ) -> common.ParseResults:
+    # Defer native loading so using the C/C++ Tree-sitter backend does not
+    # initialize the independent Java native parser.
+    from vanir.language_parsers.java.python import parser_core  # pylint: disable=g-import-not-at-top
+    from pybind11_abseil import status  # pylint: disable=g-import-not-at-top
     if not affected_line_ranges_for_functions:
       affected_line_ranges_for_functions = []
 
