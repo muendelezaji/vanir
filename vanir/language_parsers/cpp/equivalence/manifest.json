@@ -1,0 +1,29 @@
+{
+  "compatible": [
+    "basic.c",
+    "kernel_style.c",
+    "casts_and_types.c",
+    "comments_literals.c",
+    "operators.c",
+    "preprocessor.c",
+    "multiline_macro.c",
+    "namespaces.cpp",
+    "cpp_methods.cpp",
+    "control_flow.c",
+    "empty.c",
+    "crlf.c",
+    "nested_comments.c",
+    "postfix_qualifiers.c",
+    "cpp_templates.cpp",
+    "adjacent_strings.c",
+    "latin1_crlf.c"
+  ],
+  "recovery": [
+    "partial_fragment.c",
+    "malformed.c"
+  ],
+  "extended_syntax": [
+    "gnu_extensions.c",
+    "function_pointer.c"
+  ]
+}
