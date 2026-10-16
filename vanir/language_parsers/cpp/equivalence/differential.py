@@ -8,7 +8,7 @@
 There is deliberately no comparison of parser-specific error messages: they are
 retained in reports while compatibility compares the structured error locations.
 Function ranges are measured through the public affected-lines API, rather than
-assuming that a function name is unique or relying on either native parser's ABI.
+assuming unique function names or relying on either native parser's ABI.
 """
 
 import dataclasses
@@ -20,7 +20,9 @@ from vanir.language_parsers import abstract_language_parser
 
 
 def snapshot(
-    parser_factory: Callable[[], abstract_language_parser.AbstractLanguageParser],
+    parser_factory: Callable[
+        [], abstract_language_parser.AbstractLanguageParser
+    ],
     source_line_count: int,
 ) -> dict[str, Any]:
   """Captures externally meaningful parser behavior, including signature output.
@@ -49,9 +51,13 @@ def snapshot(
         'functions': [[chunk.name, list(chunk.tokens)] for chunk in chunks],
     })
     hashes, used = hasher.hash_line_chunk(normalized_lines, affected or [])
-    line_hashes.append({'ranges': affected, 'hashes': hashes, 'used_lines': used})
+    line_hashes.append({
+        'ranges': affected, 'hashes': hashes, 'used_lines': used,
+    })
   return {
-      'functions': [dataclasses.asdict(chunk) for chunk in results.function_chunks],
+      'functions': [
+          dataclasses.asdict(chunk) for chunk in results.function_chunks
+      ],
       'line_tokens': dict(results.line_chunk.tokens),
       'function_selection': selections,
       'normalized_functions': [
@@ -68,11 +74,15 @@ def snapshot(
           [error.line, error.column, error.bad_token]
           for error in results.parse_errors
       ],
-      'diagnostics': [dataclasses.asdict(error) for error in results.parse_errors],
+      'diagnostics': [
+          dataclasses.asdict(error) for error in results.parse_errors
+      ],
   }
 
 
-def differences(reference: dict[str, Any], candidate: dict[str, Any]) -> list[str]:
+def differences(
+    reference: dict[str, Any], candidate: dict[str, Any]
+) -> list[str]:
   """Returns changed contract dimensions; diagnostics are parser-specific."""
   return sorted(
       key for key in reference

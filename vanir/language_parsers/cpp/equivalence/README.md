@@ -3,7 +3,9 @@
 These are original, synthetic sources. They intentionally avoid copying code
 from third-party projects. `kernel_style.c` models opaque structures, pointer
 parameters, early returns, and external calls common in kernel code;
-`gnu_extensions.c` separately exercises compiler-specific syntax. The cases
+`gnu_extensions.c` separately exercises compiler-specific syntax. Additional
+lexical regressions cover nested comments, postfix type qualifiers, a template
+function prefix, macro-separated adjacent strings, and Latin-1 with CRLF. The cases
 reflect the two-stage FuzzyC contract implemented in `cpp/parser_core.cc` and
 its normalizer/hasher consumers. Reference projects for future expansion:
 
@@ -47,12 +49,12 @@ Run the actual two-parser gate using the repository's supported test runner:
 bazel test //vanir/language_parsers/cpp:parser_equivalence_test
 ```
 
-The 16 fixtures establish a targeted regression corpus, not a statistical claim
+The 21 fixtures establish a targeted regression corpus, not a statistical claim
 of equivalence for all C/C++ dialects. Grow it with real-world failures before
 considering removal of the reference parser or migration of stored signatures.
 
-The GNU `typeof(item->value)` fixture is intentionally a strict release gate.
-The pinned C grammar currently diagnoses that field-expression form and can
-lose local-variable metadata. Keep such failures visible: measuring the native
-reference and deciding compatibility or a signature migration must precede any
-relaxation of this assertion.
+The GNU `typeof(item->value)` fixture remains a strict release gate. The pinned
+C grammar diagnoses that expression form; the compatibility adapter must handle
+it while retaining FuzzyC's function boundary, empty return type, omitted call
+metadata, and signature. The function-pointer case uses different base and
+argument types so ordering and duplicate type captures are checked independently.
