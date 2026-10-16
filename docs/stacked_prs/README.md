@@ -15,8 +15,9 @@ git checkout copilot/copilottree-sitter-migration
 git fetch docs/stacked_prs/tree-sitter-stack.bundle \
   copilot/tree-sitter-equivalence-tests:copilot/tree-sitter-equivalence-tests \
   copilot/tree-sitter-cpp-backend:copilot/tree-sitter-cpp-backend \
-  copilot/remove-fuzzyc:copilot/remove-fuzzyc
-git push origin copilot/tree-sitter-equivalence-tests copilot/tree-sitter-cpp-backend copilot/remove-fuzzyc
+  copilot/remove-fuzzyc:copilot/remove-fuzzyc \
+  copilot/fuzzyc-fallback-shim:copilot/fuzzyc-fallback-shim
+git push origin copilot/tree-sitter-equivalence-tests copilot/tree-sitter-cpp-backend copilot/remove-fuzzyc copilot/fuzzyc-fallback-shim
 
 gh pr create --base main --head copilot/copilottree-sitter-migration \
   --title "[copilot] Tree-sitter migration plan and parser contract fixtures"
@@ -26,9 +27,16 @@ gh pr create --base copilot/tree-sitter-equivalence-tests --head copilot/tree-si
   --title "[copilot] Add Tree-sitter C/C++ parser backend"
 gh pr create --base copilot/tree-sitter-cpp-backend --head copilot/remove-fuzzyc \
   --title "[copilot] Remove FuzzyC and C/C++ native parser build"
+gh pr create --base copilot/remove-fuzzyc --head copilot/fuzzyc-fallback-shim \
+  --title "[copilot] Add VANIR_CPP_PARSER switch to select FuzzyC or Tree-sitter"
 ```
 
 The bundle's branches are stacked: equivalence-tests -> cpp-backend ->
 remove-fuzzyc, with the equivalence commit parented on `5ffeb5e` (stage 1 tip).
 See `docs/tree_sitter_migration_plan.md` section 14 for compatibility findings
 and intentional deviations. Delete this directory once the PRs are pushed.
+
+Stage 5 (`copilot/fuzzyc-fallback-shim`): restores FuzzyC (revert of stage 4)
+and adds the `VANIR_CPP_PARSER=fuzzyc|treesitter` switch in
+`language_parsers.py`; `bazel test //...` 36/36 pass. Skip stage 4 + 5 if you
+prefer to keep FuzzyC permanently.
