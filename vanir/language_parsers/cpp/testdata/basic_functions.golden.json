@@ -1,0 +1,130 @@
+{
+  "description": "Golden FuzzyC output; mirrors cpp_parser_test.py expectations.",
+  "affected_line_ranges": [],
+  "parse_errors": [],
+  "function_chunks": [
+    {
+      "name": "test_func1",
+      "return_types": [
+        [
+          "int"
+        ]
+      ],
+      "parameters": [
+        "test_arg"
+      ],
+      "used_data_types": [
+        [
+          "const",
+          "unsigned",
+          "int64"
+        ],
+        [
+          "const",
+          "struct",
+          "teststruct"
+        ],
+        [
+          "struct",
+          "teststruct"
+        ]
+      ],
+      "local_variables": [
+        "testvar"
+      ],
+      "called_functions": [
+        "test_func2"
+      ]
+    },
+    {
+      "name": "test_func_def",
+      "return_types": [
+        [
+          "void"
+        ]
+      ],
+      "parameters": [
+        "myarg"
+      ]
+    }
+  ],
+  "line_tokens": {
+    "2": [
+      "int",
+      "test_globalvar",
+      "=",
+      "10",
+      ";"
+    ],
+    "3": [
+      "int",
+      "test_func1",
+      "(",
+      "const",
+      "unsigned",
+      "int64",
+      "test_arg",
+      ")",
+      "{"
+    ],
+    "4": [
+      "const",
+      "struct",
+      "teststruct",
+      "*",
+      "testvar",
+      "=",
+      "(",
+      "struct",
+      "teststruct",
+      "*",
+      ")",
+      "globalvar",
+      "->",
+      "data",
+      ";"
+    ],
+    "5": [
+      "test_func2",
+      "(",
+      "test_arg",
+      ",",
+      "testvar",
+      ")",
+      ";"
+    ],
+    "7": [
+      "0xe8",
+      "(",
+      ")",
+      ";"
+    ],
+    "8": [
+      "return",
+      "0",
+      ";"
+    ],
+    "9": [
+      "}"
+    ],
+    "10": [
+      "void",
+      "test_func_decl",
+      "(",
+      "int",
+      "myarg",
+      ")",
+      ";"
+    ],
+    "11": [
+      "void",
+      "test_func_def",
+      "(",
+      "int",
+      "myarg",
+      ")",
+      "{",
+      "}"
+    ]
+  }
+}
