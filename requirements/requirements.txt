@@ -15,3 +15,8 @@ google-cloud-iam
 protobuf
 jsonpath_ng
 
+# Tree-sitter backend and language grammars (signature compatibility pins).
+tree-sitter==0.25.0
+tree-sitter-c==0.24.1
+tree-sitter-cpp==0.23.4
+tree-sitter-java==0.23.2

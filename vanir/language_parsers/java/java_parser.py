@@ -10,13 +10,10 @@ This module implements an AbstractLanguageParser that handles all .java files.
 """
 
 import os
-from typing import Iterable, Optional, Sequence, Tuple
+from typing import Optional, Sequence, Tuple
 
 from vanir.language_parsers import abstract_language_parser
 from vanir.language_parsers import common
-from vanir.language_parsers.java.python import parser_core
-
-from pybind11_abseil import status
 
 _ANTLR4_DECODE_ERROR = 'UTF-8 string contains an illegal byte sequence'
 
@@ -32,7 +29,7 @@ class JavaParser(abstract_language_parser.AbstractLanguageParser):
 
   @classmethod
   # pyrefly: ignore[bad-override]
-  def get_supported_extensions(cls) -> Iterable[str]:
+  def get_supported_extensions(cls) -> Sequence[str]:
     return ['.java']
 
   def get_chunks(
@@ -41,6 +38,10 @@ class JavaParser(abstract_language_parser.AbstractLanguageParser):
           Sequence[Tuple[int, int]]
       ] = None,
   ) -> common.ParseResults:
+    # Defer native loading so using the C/C++ Tree-sitter backend does not
+    # initialize the independent Java native parser.
+    from vanir.language_parsers.java.python import parser_core  # pylint: disable=import-outside-toplevel
+    from pybind11_abseil import status  # pylint: disable=import-outside-toplevel
     if not affected_line_ranges_for_functions:
       affected_line_ranges_for_functions = []
 
