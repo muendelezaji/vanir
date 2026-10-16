@@ -1,4 +1,4 @@
-int apply(int (*callback)(int), int value) {
-  int (*local)(int) = callback;
+long apply(long (*callback)(short), short value) {
+  long (*local)(short) = callback;
   return local(value);
 }
